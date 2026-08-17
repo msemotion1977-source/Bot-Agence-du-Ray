@@ -1,0 +1,9 @@
+{
+  "name": "contact-widget-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend du widget de contact (bulle Oui/Non + notifications SMS + tableau de bord)",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

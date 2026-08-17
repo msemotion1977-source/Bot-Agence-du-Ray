@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Messages - Tableau de bord</title>
+<style>
+  :root{ --accent:#1a56db; --bg:#f5f6f8; --card:#fff; --border:#e6e8eb; --muted:#6b7280; --new:#dc2626; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111;}
+  header{background:var(--accent);color:#fff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+  header h1{font-size:17px;margin:0;font-weight:600;}
+  header button{background:rgba(255,255,255,.15);border:none;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;}
+  header button:hover{background:rgba(255,255,255,.25);}
+  main{max-width:720px;margin:0 auto;padding:16px;}
+  #login{max-width:340px;margin:80px auto;background:var(--card);padding:24px;border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.08);text-align:center;}
+  #login input{width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:15px;margin:14px 0;}
+  #login button{width:100%;padding:11px;border:none;background:var(--accent);color:#fff;border-radius:9px;font-size:15px;font-weight:600;cursor:pointer;}
+  #login p.err{color:#dc2626;font-size:13px;margin-top:6px;}
+  .filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .filters button{border:1.5px solid var(--border);background:#fff;padding:6px 14px;border-radius:20px;font-size:13px;cursor:pointer;color:#333;}
+  .filters button.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
+  .card.new{border-left:4px solid var(--new);}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.02em;}
+  .badge.call{background:#e0f2fe;color:#0369a1;}
+  .badge.question{background:#fef3c7;color:#92400e;}
+  .badge.answered{background:#dcfce7;color:#166534;}
+  .site{font-size:12px;color:var(--muted);}
+  .content{font-size:14.5px;line-height:1.45;margin:6px 0;}
+  .phone{font-size:13.5px;color:var(--accent);font-weight:600;}
+  .time{font-size:11.5px;color:var(--muted);}
+  .reply-box{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
+  .reply-box textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit;min-height:60px;resize:vertical;}
+  .reply-box .actions{display:flex;gap:8px;margin-top:8px;}
+  .reply-box button{padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;}
+  .btn-send{background:var(--accent);color:#fff;font-weight:600;}
+  .btn-mark{background:#f1f2f4;color:#333;}
+  .already-replied{margin-top:10px;background:#f0fdf4;border-radius:9px;padding:9px 11px;font-size:13.5px;color:#166534;}
+  .empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+  .toolbar span{font-size:12.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1 style="margin-top:0">Tableau de bord</h1>
+  <p style="color:var(--muted);font-size:13.5px">Entrez le mot de passe pour voir les messages.</p>
+  <input type="password" id="pw" placeholder="Mot de passe" />
+  <button id="loginBtn">Se connecter</button>
+  <p class="err" id="loginErr" style="display:none">Mot de passe incorrect.</p>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <h1>Messages</h1>
+    <button id="logoutBtn">Se déconnecter</button>
+  </header>
+  <main>
+    <div class="toolbar">
+      <div class="filters">
+        <button data-f="all" class="active">Tous</button>
+        <button data-f="new">Nouveaux</button>
+        <button data-f="call">Rappels</button>
+        <button data-f="question">Questions</button>
+      </div>
+    </div>
+    <span id="refreshInfo" style="font-size:12px;color:var(--muted)"></span>
+    <div id="list"></div>
+  </main>
+</div>
+
+<script>
+(function(){
+  var pwInput = document.getElementById('pw');
+  var loginBtn = document.getElementById('loginBtn');
+  var loginErr = document.getElementById('loginErr');
+  var loginEl = document.getElementById('login');
+  var appEl = document.getElementById('app');
+  var listEl = document.getElementById('list');
+  var refreshInfo = document.getElementById('refreshInfo');
+  var currentFilter = 'all';
+  var pollTimer = null;
+  var lastData = [];
+
+  function getPw(){ return sessionStorage.getItem('cw_admin_pw') || ''; }
+  function setPw(v){ sessionStorage.setItem('cw_admin_pw', v); }
+
+  loginBtn.addEventListener('click', doLogin);
+  pwInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
+
+  function doLogin(){
+    var pw = pwInput.value.trim();
+    if (!pw) return;
+    fetchConversations(pw).then(function(ok){
+      if (ok) {
+        setPw(pw);
+        loginEl.style.display = 'none';
+        appEl.style.display = 'block';
+        startPolling();
+      } else {
+        loginErr.style.display = 'block';
+      }
+    });
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function(){
+    sessionStorage.removeItem('cw_admin_pw');
+    clearInterval(pollTimer);
+    appEl.style.display = 'none';
+    loginEl.style.display = 'block';
+  });
+
+  document.querySelectorAll('.filters button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.filters button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      currentFilter = btn.getAttribute('data-f');
+      render(lastData);
+    });
+  });
+
+  function fetchConversations(pw){
+    return fetch('/.netlify/functions/conversations', {
+      headers: { 'x-admin-password': pw }
+    }).then(function(r){
+      if (r.status === 401) return false;
+      return r.json().then(function(d){
+        lastData = d.conversations || [];
+        render(lastData);
+        refreshInfo.textContent = 'Mis à jour à ' + new Date().toLocaleTimeString('fr-FR');
+        return true;
+      });
+    }).catch(function(){ return false; });
+  }
+
+  function startPolling(){
+    fetchConversations(getPw());
+    pollTimer = setInterval(function(){ fetchConversations(getPw()); }, 15000);
+  }
+
+  // Reconnexion auto si un mot de passe est déjà en mémoire (même onglet)
+  if (getPw()) {
+    fetchConversations(getPw()).then(function(ok){
+      if (ok) { loginEl.style.display = 'none'; appEl.style.display = 'block'; startPolling(); }
+    });
+  }
+
+  function render(data){
+    var filtered = data.filter(function(c){
+      if (currentFilter === 'all') return true;
+      if (currentFilter === 'new') return c.status === 'new';
+      return c.type === currentFilter;
+    });
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="empty">Aucun message pour le moment.</div>';
+      return;
+    }
+    listEl.innerHTML = filtered.map(renderCard).join('');
+    filtered.forEach(function(c){
+      var sendBtn = document.getElementById('send-' + c.id);
+      if (sendBtn) sendBtn.addEventListener('click', function(){ doReply(c.id); });
+    });
+  }
+
+  function renderCard(c){
+    var badgeType = c.type === 'call'
+      ? '<span class="badge call">Demande de rappel</span>'
+      : '<span class="badge question">Question</span>';
+    var badgeStatus = c.status === 'answered' ? '<span class="badge answered">Traité</span>' : '';
+    var time = new Date(c.createdAt).toLocaleString('fr-FR');
+    var contentHtml = c.type === 'call'
+      ? '<div class="phone">📞 ' + escapeHtml(c.phone) + '</div>'
+      : ('<div class="content">' + escapeHtml(c.question) + '</div>' + (c.phone ? '<div class="phone">📞 ' + escapeHtml(c.phone) + '</div>' : '<div class="site">Pas de numéro laissé</div>'));
+
+    var replySection = '';
+    if (c.reply) {
+      replySection = '<div class="already-replied">✓ Traité' + (c.repliedAt ? ' le ' + new Date(c.repliedAt).toLocaleString('fr-FR') : '') + ' — note : "' + escapeHtml(c.reply) + '"</div>';
+    } else if (c.status !== 'answered') {
+      replySection =
+        '<div class="reply-box">' +
+          '<textarea id="txt-' + c.id + '" placeholder="Note (facultatif) : ce que vous avez répondu au visiteur par téléphone/SMS/WhatsApp"></textarea>' +
+          '<div class="actions"><button class="btn-send" id="send-' + c.id + '">Enregistrer et marquer comme traité</button></div>' +
+        '</div>';
+    }
+
+    return '<div class="card ' + (c.status === 'new' ? 'new' : '') + '">' +
+      '<div class="row"><div>' + badgeType + ' ' + badgeStatus + '</div><span class="time">' + time + '</span></div>' +
+      '<div class="site">' + escapeHtml(c.site || '') + '</div>' +
+      contentHtml +
+      replySection +
+      '</div>';
+  }
+
+  function doReply(id){
+    var textEl = document.getElementById('txt-' + id);
+    var replyText = textEl ? textEl.value.trim() : '';
+    fetch('/.netlify/functions/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-password': getPw() },
+      body: JSON.stringify({ id: id, replyText: replyText })
+    }).then(function(r){ return r.json(); }).then(function(){
+      fetchConversations(getPw());
+    });
+  }
+
+  function escapeHtml(s){
+    return (s || '').replace(/[&<>"']/g, function(m){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m];
+    });
+  }
+})();
+</script>
+</body>
+</html>
