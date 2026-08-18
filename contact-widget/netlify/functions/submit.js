@@ -1,11 +1,9 @@
 const { getStore } = require("@netlify/blobs");
-
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type"
 };
-
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
@@ -13,19 +11,16 @@ exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, headers: CORS_HEADERS, body: "Method not allowed" };
   }
-
   let data;
   try {
     data = JSON.parse(event.body || "{}");
   } catch (e) {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Invalid JSON" };
   }
-
   // Piège à robots : un vrai visiteur ne remplit jamais ce champ caché
   if (data.hp) {
     return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true }) };
   }
-
   const type = data.type === "call" ? "call" : data.type === "question" ? "question" : null;
   if (!type) {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Missing/invalid type" };
@@ -34,14 +29,12 @@ exports.handler = async (event) => {
   const question = (data.question || "").toString().trim().slice(0, 1000);
   const site = (data.site || "site inconnu").toString().trim().slice(0, 120);
   const pageUrl = (data.pageUrl || "").toString().trim().slice(0, 300);
-
   if (type === "call" && !phone) {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Phone required for call" };
   }
   if (type === "question" && !question) {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Question required" };
   }
-
   const id = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).toUpperCase();
   const conversation = {
     id,
@@ -56,8 +49,17 @@ exports.handler = async (event) => {
     repliedAt: null
   };
 
-  const store = getStore({ name: "conversations", consistency: "strong" });
-  await store.setJSON(id, conversation);
+  // Sauvegarde en base : ne doit JAMAIS faire planter toute la fonction.
+  // Si Netlify Blobs a un souci, on logue l'erreur mais on continue quand même
+  // (l'agent recevra la notification Telegram même si l'historique dashboard échoue).
+  let storageOk = true;
+  try {
+    const store = getStore({ name: "conversations", consistency: "strong" });
+    await store.setJSON(id, conversation);
+  } catch (err) {
+    storageOk = false;
+    console.error("Erreur d'écriture Netlify Blobs :", err && err.message ? err.message : err);
+  }
 
   // Notification instantanée et gratuite à l'agent via Telegram (ne bloque pas la réponse en cas d'échec)
   try {
@@ -69,12 +71,11 @@ exports.handler = async (event) => {
     const chatId = data.notifyChatId || process.env.TELEGRAM_CHAT_ID;
     await sendTelegramMessage(chatId, text);
   } catch (err) {
-    console.error("Erreur envoi notification Telegram :", err);
+    console.error("Erreur envoi notification Telegram :", err && err.message ? err.message : err);
   }
 
-  return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true, id }) };
+  return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true, id, storageOk }) };
 };
-
 async function sendTelegramMessage(chatId, text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || !chatId) {
@@ -91,5 +92,4 @@ async function sendTelegramMessage(chatId, text) {
     throw new Error(`Telegram ${res.status}: ${errText}`);
   }
 }
-
 module.exports.sendTelegramMessage = sendTelegramMessage;
