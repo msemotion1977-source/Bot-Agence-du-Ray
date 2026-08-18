@@ -18,7 +18,6 @@ exports.handler = async (event) => {
   } catch (e) {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Invalid JSON" };
   }
-  // Piège à robots : un vrai visiteur ne remplit jamais ce champ caché
   if (data.hp) {
     return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true }) };
   }
@@ -56,14 +55,15 @@ exports.handler = async (event) => {
     messages: [{ from: "visitor", text: firstMessageText, at: nowIso }]
   };
 
-  // Sauvegarde en base : ne doit JAMAIS faire planter toute la fonction.
+  // Sauvegarde en base : getStore() ET setJSON() sont TOUS LES DEUX protégés,
+  // pour ne jamais faire planter toute la fonction si Netlify Blobs a un souci.
   let storageOk = true;
-  const store = getStore({ name: "conversations", consistency: "strong" });
   try {
+    const store = getStore({ name: "conversations", consistency: "strong" });
     await store.setJSON(id, conversation);
   } catch (err) {
     storageOk = false;
-    console.error("Erreur d'écriture Netlify Blobs :", err && err.message ? err.message : err);
+    console.error("Erreur Netlify Blobs (écriture) :", err && err.message ? err.message : err);
   }
 
   // Notification instantanée à l'agent via Telegram (ne bloque pas la réponse en cas d'échec)
@@ -79,6 +79,7 @@ exports.handler = async (event) => {
       conversation.telegramMessageId = tgResult.message_id;
       if (storageOk) {
         try {
+          const store = getStore({ name: "conversations", consistency: "strong" });
           await store.setJSON(id, conversation);
           const index = getStore({ name: "telegram-index", consistency: "strong" });
           await index.setJSON(String(tgResult.message_id), { conversationId: id });
@@ -109,6 +110,6 @@ async function sendTelegramMessage(chatId, text) {
   if (!res.ok || !json || !json.ok) {
     throw new Error(`Telegram ${res.status}: ${json ? JSON.stringify(json) : "réponse invalide"}`);
   }
-  return json.result; // contient message_id, utile pour le threading des réponses
+  return json.result;
 }
 module.exports.sendTelegramMessage = sendTelegramMessage;
