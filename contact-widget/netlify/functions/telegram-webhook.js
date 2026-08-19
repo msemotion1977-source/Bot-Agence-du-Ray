@@ -1,13 +1,19 @@
 const { getStore } = require("@netlify/blobs");
 
+function blobsOpts(name) {
+  const opts = { name, consistency: "strong" };
+  if (process.env.BLOBS_SITE_ID && process.env.BLOBS_TOKEN) {
+    opts.siteID = process.env.BLOBS_SITE_ID;
+    opts.token = process.env.BLOBS_TOKEN;
+  }
+  return opts;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method not allowed" };
   }
 
-  // Vérifie que la requête vient bien de Telegram (secret défini lors du setWebhook,
-  // voir les instructions de mise en place). Évite que n'importe qui puisse appeler
-  // cette adresse et injecter de faux messages "agent" dans des conversations.
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const gotSecret =
     event.headers["x-telegram-bot-api-secret-token"] || event.headers["X-Telegram-Bot-Api-Secret-Token"];
@@ -19,12 +25,10 @@ exports.handler = async (event) => {
   try {
     update = JSON.parse(event.body || "{}");
   } catch (e) {
-    return { statusCode: 200, body: "ignored" }; // toujours répondre 200 à Telegram
+    return { statusCode: 200, body: "ignored" };
   }
 
   const message = update.message;
-  // On ne traite QUE les messages envoyés en "Répondre" à une de nos notifications.
-  // Tout le reste (messages normaux au bot, commandes, etc.) est ignoré silencieusement.
   if (!message || !message.reply_to_message || !message.text) {
     return { statusCode: 200, body: "ignored" };
   }
@@ -32,13 +36,13 @@ exports.handler = async (event) => {
   const repliedId = String(message.reply_to_message.message_id);
 
   try {
-    const index = getStore({ name: "telegram-index", consistency: "strong" });
+    const index = getStore(blobsOpts("telegram-index"));
     const entry = await index.get(repliedId, { type: "json" });
     if (!entry || !entry.conversationId) {
       return { statusCode: 200, body: "no match" };
     }
 
-    const store = getStore({ name: "conversations", consistency: "strong" });
+    const store = getStore(blobsOpts("conversations"));
     const conversation = await store.get(entry.conversationId, { type: "json" });
     if (!conversation) {
       return { statusCode: 200, body: "conversation gone" };
@@ -51,7 +55,6 @@ exports.handler = async (event) => {
     conversation.updatedAt = new Date().toISOString();
     await store.setJSON(entry.conversationId, conversation);
 
-    // Petite confirmation pour l'agent, pour qu'elle sache que c'est bien parti.
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = message.chat && message.chat.id;
     if (token && chatId) {
