@@ -5,6 +5,17 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+// Configuration explicite du stockage : sur certains comptes, Netlify ne configure pas
+// automatiquement l'accès à Blobs comme prévu. On fournit siteID + token en secours.
+function blobsOpts(name) {
+  const opts = { name, consistency: "strong" };
+  if (process.env.BLOBS_SITE_ID && process.env.BLOBS_TOKEN) {
+    opts.siteID = process.env.BLOBS_SITE_ID;
+    opts.token = process.env.BLOBS_TOKEN;
+  }
+  return opts;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
@@ -50,24 +61,20 @@ exports.handler = async (event) => {
     pageUrl,
     type,
     phone: phone || null,
-    question: type === "question" ? question : null,
     status: "new",
     telegramMessageId: null,
     messages: [{ from: "visitor", text: firstMessageText, at: nowIso }]
   };
 
-  // Sauvegarde en base : getStore() ET setJSON() sont TOUS LES DEUX protégés,
-  // pour ne jamais faire planter toute la fonction si Netlify Blobs a un souci.
   let storageOk = true;
   try {
-    const store = getStore({ name: "conversations", consistency: "strong" });
+    const store = getStore(blobsOpts("conversations"));
     await store.setJSON(id, conversation);
   } catch (err) {
     storageOk = false;
     console.error("Erreur Netlify Blobs (écriture) :", err && err.message ? err.message : err);
   }
 
-  // Notification instantanée à l'agent via Telegram (ne bloque pas la réponse en cas d'échec)
   try {
     const dashboardUrl = process.env.DASHBOARD_URL || "";
     const text =
@@ -80,9 +87,9 @@ exports.handler = async (event) => {
       conversation.telegramMessageId = tgResult.message_id;
       if (storageOk) {
         try {
-          const store = getStore({ name: "conversations", consistency: "strong" });
+          const store = getStore(blobsOpts("conversations"));
           await store.setJSON(id, conversation);
-          const index = getStore({ name: "telegram-index", consistency: "strong" });
+          const index = getStore(blobsOpts("telegram-index"));
           await index.setJSON(String(tgResult.message_id), { conversationId: id });
         } catch (err) {
           console.error("Erreur indexation Telegram :", err && err.message ? err.message : err);
