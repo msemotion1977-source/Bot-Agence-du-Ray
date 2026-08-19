@@ -5,7 +5,9 @@
  * Attributs optionnels sur la balise <script> :
  *   data-api    -> URL du backend si différente de l'URL du script (rare)
  *   data-site   -> nom affiché dans le tableau de bord (par défaut : nom de domaine du site)
- *   data-color  -> couleur d'accent en hexadécimal, ex: "#1a73e8"
+ *   data-color  -> couleur d'accent en hexadécimal, ex: "#5DA9DA" (par défaut, bleu ciel)
+ *   data-beige  -> couleur secondaire (beige) en hexadécimal
+ *   data-avatar -> URL d'une image d'avatar pour la bulle (par défaut : avatar.png sur le backend)
  *   data-notify -> identifiant Telegram à notifier POUR CE SITE précis (remplace celui par défaut)
  */
 (function () {
@@ -19,7 +21,9 @@
 
   var API_BASE = currentScript.getAttribute("data-api") || new URL(currentScript.src).origin;
   var SITE_NAME = currentScript.getAttribute("data-site") || window.location.hostname;
-  var ACCENT = currentScript.getAttribute("data-color") || "#1a56db";
+  var ACCENT = currentScript.getAttribute("data-color") || "#5DA9DA"; // bleu ciel
+  var BEIGE = currentScript.getAttribute("data-beige") || "#EFE1CB"; // beige
+  var AVATAR_URL = currentScript.getAttribute("data-avatar") || API_BASE + "/avatar.png";
   var SITE_NOTIFY_OVERRIDE = currentScript.getAttribute("data-notify") || "";
   var POLL_INTERVAL = 4000;
 
@@ -28,17 +32,18 @@
 
   // ---------- Identité visiteur + conversation en cours (locale, privée) ----------
 
-  function safeLocalStorage() {
+  function safeStorage(storage) {
     try {
       var k = "__cw_test";
-      localStorage.setItem(k, "1");
-      localStorage.removeItem(k);
+      storage.setItem(k, "1");
+      storage.removeItem(k);
       return true;
     } catch (e) {
       return false;
     }
   }
-  var HAS_STORAGE = safeLocalStorage();
+  var HAS_STORAGE = safeStorage(window.localStorage);
+  var HAS_SESSION = safeStorage(window.sessionStorage);
 
   function getVisitorId() {
     if (!HAS_STORAGE) {
@@ -80,6 +85,19 @@
     } catch (e) {}
   }
 
+  // Mémoire "fermé par le visiteur" limitée à l'onglet en cours : évite de rouvrir de force
+  // la bulle à chaque nouvelle page si le visiteur vient de la fermer lui-même.
+  function wasDismissedThisSession() {
+    if (!HAS_SESSION) return false;
+    return sessionStorage.getItem("__cw_dismissed") === "1";
+  }
+  function markDismissed() {
+    if (!HAS_SESSION) return;
+    try {
+      sessionStorage.setItem("__cw_dismissed", "1");
+    } catch (e) {}
+  }
+
   // ---------- Structure visuelle ----------
 
   var host = document.createElement("div");
@@ -91,43 +109,46 @@
   style.textContent = [
     ":host, *{box-sizing:border-box;}",
     ".cw-wrap{position:fixed;bottom:20px;right:20px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}",
-    ".cw-bubble{width:58px;height:58px;border-radius:50%;background:" + ACCENT + ";box-shadow:0 4px 14px rgba(0,0,0,.25);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease;position:relative;}",
+    ".cw-bubble{width:60px;height:60px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.25);border:2.5px solid " + ACCENT + ";cursor:pointer;padding:0;overflow:hidden;position:relative;transition:transform .15s ease;}",
     ".cw-bubble:hover{transform:scale(1.06);}",
-    ".cw-bubble svg{width:26px;height:26px;fill:#fff;}",
-    ".cw-dot{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#ef4444;border:2px solid #fff;display:none;}",
+    ".cw-bubble img{width:100%;height:100%;object-fit:cover;display:block;}",
+    ".cw-dot{position:absolute;top:0;right:0;width:15px;height:15px;border-radius:50%;background:#ef4444;border:2px solid #fff;display:none;}",
     ".cw-dot.show{display:block;}",
-    ".cw-panel{position:absolute;bottom:72px;right:0;width:310px;max-width:calc(100vw - 32px);background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden;display:none;flex-direction:column;border:1px solid #eee;}",
+    ".cw-panel{position:absolute;bottom:74px;right:0;width:310px;max-width:calc(100vw - 32px);background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden;display:none;flex-direction:column;border:1px solid " + BEIGE + ";}",
     ".cw-panel.open{display:flex;}",
-    ".cw-header{background:" + ACCENT + ";color:#fff;padding:14px 16px;font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:space-between;}",
+    ".cw-header{background:linear-gradient(135deg, " + ACCENT + ", " + ACCENT + "cc);color:#fff;padding:14px 16px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:10px;justify-content:space-between;}",
+    ".cw-header-left{display:flex;align-items:center;gap:10px;}",
+    ".cw-header-avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1.5px solid #fff;}",
+    ".cw-header-avatar img{width:100%;height:100%;object-fit:cover;display:block;}",
     ".cw-close{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;opacity:.85;padding:2px 4px;}",
     ".cw-close:hover{opacity:1;}",
-    ".cw-body{padding:16px;}",
-    ".cw-question{font-size:14px;color:#222;margin:0 0 12px;line-height:1.4;}",
+    ".cw-body{padding:16px;background:#fff;}",
+    ".cw-question{font-size:14px;color:#3a3226;margin:0 0 12px;line-height:1.4;}",
     ".cw-choices{display:flex;gap:10px;}",
     ".cw-choice-btn{flex:1;padding:10px 0;border-radius:10px;border:1.5px solid " + ACCENT + ";background:#fff;color:" + ACCENT + ";font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;}",
-    ".cw-choice-btn:hover{background:" + ACCENT + "1a;}",
+    ".cw-choice-btn:hover{background:" + BEIGE + "80;}",
     ".cw-choice-btn.primary{background:" + ACCENT + ";color:#fff;}",
-    ".cw-choice-btn.primary:hover{filter:brightness(1.08);}",
-    "label.cw-label{display:block;font-size:12.5px;color:#555;margin-bottom:6px;font-weight:500;}",
-    ".cw-input,.cw-textarea{width:100%;border:1.5px solid #ddd;border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;margin-bottom:12px;outline:none;color:#111;}",
+    ".cw-choice-btn.primary:hover{filter:brightness(1.06);}",
+    "label.cw-label{display:block;font-size:12.5px;color:#6b5f4d;margin-bottom:6px;font-weight:500;}",
+    ".cw-input,.cw-textarea{width:100%;border:1.5px solid " + BEIGE + ";border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;margin-bottom:12px;outline:none;color:#2c2418;background:#fffdf9;}",
     ".cw-input:focus,.cw-textarea:focus{border-color:" + ACCENT + ";}",
     ".cw-textarea{resize:vertical;min-height:72px;}",
     ".cw-send{width:100%;padding:11px 0;border-radius:10px;border:none;background:" + ACCENT + ";color:#fff;font-size:14px;font-weight:600;cursor:pointer;}",
-    ".cw-send:hover{filter:brightness(1.08);}",
+    ".cw-send:hover{filter:brightness(1.06);}",
     ".cw-send:disabled{opacity:.6;cursor:default;}",
-    ".cw-back{background:none;border:none;color:#888;font-size:12.5px;cursor:pointer;margin-bottom:10px;padding:0;}",
-    ".cw-small{font-size:11.5px;color:#999;margin-top:4px;}",
+    ".cw-back{background:none;border:none;color:#8a7c66;font-size:12.5px;cursor:pointer;margin-bottom:10px;padding:0;}",
+    ".cw-small{font-size:11.5px;color:#a89a82;margin-top:4px;}",
     "input.cw-hp{position:absolute;left:-9999px;top:-9999px;}",
-    ".cw-chat{height:260px;overflow-y:auto;padding:4px 2px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;}",
+    ".cw-chat{height:260px;overflow-y:auto;padding:4px 2px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;background:#fff;}",
     ".cw-msg{max-width:80%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.35;word-wrap:break-word;white-space:pre-wrap;}",
     ".cw-msg-visitor{align-self:flex-end;background:" + ACCENT + ";color:#fff;border-bottom-right-radius:4px;}",
-    ".cw-msg-agent{align-self:flex-start;background:#f0f1f3;color:#222;border-bottom-left-radius:4px;}",
+    ".cw-msg-agent{align-self:flex-start;background:" + BEIGE + ";color:#3a3226;border-bottom-left-radius:4px;}",
     ".cw-chat-input-row{display:flex;gap:8px;align-items:center;}",
-    ".cw-chat-input{flex:1;border:1.5px solid #ddd;border-radius:20px;padding:9px 14px;font-size:13.5px;font-family:inherit;outline:none;color:#111;}",
+    ".cw-chat-input{flex:1;border:1.5px solid " + BEIGE + ";border-radius:20px;padding:9px 14px;font-size:13.5px;font-family:inherit;outline:none;color:#2c2418;background:#fffdf9;}",
     ".cw-chat-input:focus{border-color:" + ACCENT + ";}",
     ".cw-chat-send{width:36px;height:36px;border-radius:50%;border:none;background:" + ACCENT + ";color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}",
-    ".cw-chat-send:hover{filter:brightness(1.08);}",
-    ".cw-restart{display:block;text-align:center;font-size:11px;color:#aaa;margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;width:100%;}"
+    ".cw-chat-send:hover{filter:brightness(1.06);}",
+    ".cw-restart{display:block;text-align:center;font-size:11px;color:#b3a68f;margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;width:100%;}"
   ].join("\n");
   root.appendChild(style);
 
@@ -135,10 +156,19 @@
   wrap.className = "cw-wrap";
   wrap.innerHTML =
     '<button class="cw-bubble" type="button" aria-label="Nous contacter">' +
-      '<svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2z"/></svg>' +
+      '<img src="' + AVATAR_URL + '" alt="" />' +
       '<span class="cw-dot" id="cw-dot"></span>' +
     "</button>" +
-    '<div class="cw-panel"><div class="cw-header"><span>Une question ?</span><button class="cw-close" type="button" aria-label="Fermer">&#10005;</button></div><div class="cw-body" id="cw-body"></div></div>';
+    '<div class="cw-panel">' +
+      '<div class="cw-header">' +
+        '<div class="cw-header-left">' +
+          '<span class="cw-header-avatar"><img src="' + AVATAR_URL + '" alt="" /></span>' +
+          "<span>Une question ?</span>" +
+        "</div>" +
+        '<button class="cw-close" type="button" aria-label="Fermer">&#10005;</button>' +
+      "</div>" +
+      '<div class="cw-body" id="cw-body"></div>' +
+    "</div>";
   root.appendChild(wrap);
 
   var bubble = wrap.querySelector(".cw-bubble");
@@ -147,25 +177,29 @@
   var body = wrap.querySelector("#cw-body");
   var dot = wrap.querySelector("#cw-dot");
 
-  bubble.addEventListener("click", function () {
-    var opening = !panel.classList.contains("open");
-    panel.classList.toggle("open");
-    if (opening) {
-      dot.classList.remove("show");
-      var saved = getSavedConversation();
-      if (saved && saved.id) {
-        loadConversationAndRenderChat(saved.id);
-      } else {
-        renderStep1();
-      }
+  function openPanel() {
+    panel.classList.add("open");
+    dot.classList.remove("show");
+    var saved = getSavedConversation();
+    if (saved && saved.id) {
+      loadConversationAndRenderChat(saved.id);
     } else {
-      stopPolling();
+      renderStep1();
+    }
+  }
+  function closePanel() {
+    panel.classList.remove("open");
+    markDismissed();
+  }
+
+  bubble.addEventListener("click", function () {
+    if (panel.classList.contains("open")) {
+      closePanel();
+    } else {
+      openPanel();
     }
   });
-  closeBtn.addEventListener("click", function () {
-    panel.classList.remove("open");
-    stopPolling();
-  });
+  closeBtn.addEventListener("click", closePanel);
 
   // ---------- Étape 1 : Oui / Non ----------
 
@@ -258,7 +292,6 @@
 
   var pollTimer = null;
   var lastMessageCount = 0;
-  var currentConversationId = null;
 
   function escapeHtml(str) {
     var div = document.createElement("div");
@@ -280,7 +313,6 @@
   }
 
   function renderChat(conversationId, initialMessages) {
-    currentConversationId = conversationId;
     body.innerHTML =
       '<div class="cw-chat" id="cw-chat"></div>' +
       '<div class="cw-chat-input-row">' +
@@ -330,7 +362,6 @@
 
     body.querySelector("#cw-restart").addEventListener("click", function () {
       clearSavedConversation();
-      stopPolling();
       renderStep1();
     });
 
@@ -390,10 +421,17 @@
     }
   }
 
-  // Vérifie en arrière-plan (même bulle fermée) s'il y a une réponse en attente,
-  // pour afficher le petit point rouge de notification sur la bulle.
-  var savedOnLoad = getSavedConversation();
-  if (savedOnLoad && savedOnLoad.id) {
-    startPolling(savedOnLoad.id);
+  // ---------- Ouverture automatique à l'arrivée sur le site ----------
+  // (sauf si le visiteur a déjà fermé la bulle lui-même durant cette visite)
+
+  if (!wasDismissedThisSession()) {
+    openPanel();
+  } else {
+    // Bulle fermée par le visiteur, mais on continue de surveiller en arrière-plan
+    // une conversation existante pour afficher le petit point rouge si l'agent répond.
+    var savedOnLoad = getSavedConversation();
+    if (savedOnLoad && savedOnLoad.id) {
+      startPolling(savedOnLoad.id);
+    }
   }
 })();
