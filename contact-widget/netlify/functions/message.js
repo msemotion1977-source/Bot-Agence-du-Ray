@@ -5,6 +5,15 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+function blobsOpts(name) {
+  const opts = { name, consistency: "strong" };
+  if (process.env.BLOBS_SITE_ID && process.env.BLOBS_TOKEN) {
+    opts.siteID = process.env.BLOBS_SITE_ID;
+    opts.token = process.env.BLOBS_TOKEN;
+  }
+  return opts;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
@@ -25,16 +34,14 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Champs manquants" };
   }
 
-  const store = getStore({ name: "conversations", consistency: "strong" });
-  let conversation;
+  let store, conversation;
   try {
+    store = getStore(blobsOpts("conversations"));
     conversation = await store.get(id, { type: "json" });
   } catch (err) {
     console.error("Erreur lecture Blobs :", err && err.message ? err.message : err);
     return { statusCode: 502, headers: CORS_HEADERS, body: "Stockage indisponible" };
   }
-  // Le visitorId doit correspondre : ça empêche quiconque connaîtrait l'id de la
-  // conversation de lire ou d'écrire dans la discussion d'un autre visiteur.
   if (!conversation || conversation.visitorId !== visitorId) {
     return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ error: "Conversation introuvable" }) };
   }
@@ -50,7 +57,6 @@ exports.handler = async (event) => {
     console.error("Erreur écriture Blobs :", err && err.message ? err.message : err);
   }
 
-  // Relance l'agent sur Telegram, en réponse au fil existant si possible (threading)
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -71,7 +77,7 @@ exports.handler = async (event) => {
       if (res.ok && json && json.ok && json.result && json.result.message_id) {
         conversation.telegramMessageId = json.result.message_id;
         await store.setJSON(id, conversation);
-        const index = getStore({ name: "telegram-index", consistency: "strong" });
+        const index = getStore(blobsOpts("telegram-index"));
         await index.setJSON(String(json.result.message_id), { conversationId: id });
       }
     }
