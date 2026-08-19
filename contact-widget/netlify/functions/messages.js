@@ -5,6 +5,15 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+function blobsOpts(name) {
+  const opts = { name, consistency: "strong" };
+  if (process.env.BLOBS_SITE_ID && process.env.BLOBS_TOKEN) {
+    opts.siteID = process.env.BLOBS_SITE_ID;
+    opts.token = process.env.BLOBS_TOKEN;
+  }
+  return opts;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
@@ -19,15 +28,14 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS_HEADERS, body: "Paramètres manquants" };
   }
 
-  const store = getStore({ name: "conversations", consistency: "strong" });
   let conversation;
   try {
+    const store = getStore(blobsOpts("conversations"));
     conversation = await store.get(id, { type: "json" });
   } catch (err) {
     console.error("Erreur lecture Blobs :", err && err.message ? err.message : err);
     return { statusCode: 502, headers: CORS_HEADERS, body: "Stockage indisponible" };
   }
-  // Même règle que pour message.js : le visitorId doit correspondre exactement.
   if (!conversation || conversation.visitorId !== visitorId) {
     return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ error: "Introuvable" }) };
   }
