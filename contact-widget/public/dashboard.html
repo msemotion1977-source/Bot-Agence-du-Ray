@@ -28,16 +28,20 @@
   .badge.question{background:#fef3c7;color:#92400e;}
   .badge.answered{background:#dcfce7;color:#166534;}
   .site{font-size:12px;color:var(--muted);}
-  .content{font-size:14.5px;line-height:1.45;margin:6px 0;}
-  .phone{font-size:13.5px;color:var(--accent);font-weight:600;}
+  .phone{font-size:13.5px;color:var(--accent);font-weight:600;margin:6px 0;}
   .time{font-size:11.5px;color:var(--muted);}
+  .thread{margin:10px 0;padding:10px;background:#f8f9fb;border-radius:10px;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;}
+  .msg{max-width:82%;padding:7px 11px;border-radius:12px;font-size:13.5px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap;}
+  .msg-visitor{align-self:flex-start;background:#eef0f3;color:#222;border-bottom-left-radius:3px;}
+  .msg-agent{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
+  .msg-meta{font-size:10px;color:var(--muted);margin-top:2px;}
   .reply-box{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
-  .reply-box textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit;min-height:60px;resize:vertical;}
-  .reply-box .actions{display:flex;gap:8px;margin-top:8px;}
+  .reply-box textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit;min-height:52px;resize:vertical;}
+  .reply-box .actions{display:flex;gap:8px;margin-top:8px;align-items:center;}
   .reply-box button{padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;}
   .btn-send{background:var(--accent);color:#fff;font-weight:600;}
   .btn-mark{background:#f1f2f4;color:#333;}
-  .already-replied{margin-top:10px;background:#f0fdf4;border-radius:9px;padding:9px 11px;font-size:13.5px;color:#166534;}
+  .reply-hint{font-size:11px;color:var(--muted);}
   .empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;}
   .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
   .toolbar span{font-size:12.5px;color:var(--muted);}
@@ -162,41 +166,60 @@
     filtered.forEach(function(c){
       var sendBtn = document.getElementById('send-' + c.id);
       if (sendBtn) sendBtn.addEventListener('click', function(){ doReply(c.id); });
+      var markBtn = document.getElementById('mark-' + c.id);
+      if (markBtn) markBtn.addEventListener('click', function(){ doReply(c.id, true); });
+      var thread = document.getElementById('thread-' + c.id);
+      if (thread) thread.scrollTop = thread.scrollHeight;
     });
   }
 
+  // CORRECTIF : avant, cette fonction essayait d'afficher c.question qui n'était
+  // jamais enregistré (toujours vide), et n'affichait jamais la conversation
+  // complète (les messages suivants du visiteur + les réponses de l'agent,
+  // que ce soit via Telegram ou depuis ce tableau de bord). Elle affiche
+  // maintenant le vrai fil de discussion, par personne.
   function renderCard(c){
     var badgeType = c.type === 'call'
       ? '<span class="badge call">Demande de rappel</span>'
       : '<span class="badge question">Question</span>';
     var badgeStatus = c.status === 'answered' ? '<span class="badge answered">Traité</span>' : '';
     var time = new Date(c.createdAt).toLocaleString('fr-FR');
-    var contentHtml = c.type === 'call'
-      ? '<div class="phone">📞 ' + escapeHtml(c.phone) + '</div>'
-      : ('<div class="content">' + escapeHtml(c.question) + '</div>' + (c.phone ? '<div class="phone">📞 ' + escapeHtml(c.phone) + '</div>' : '<div class="site">Pas de numéro laissé</div>'));
+    var messages = c.messages && c.messages.length ? c.messages : [];
 
-    var replySection = '';
-    if (c.reply) {
-      replySection = '<div class="already-replied">✓ Traité' + (c.repliedAt ? ' le ' + new Date(c.repliedAt).toLocaleString('fr-FR') : '') + ' — note : "' + escapeHtml(c.reply) + '"</div>';
-    } else if (c.status !== 'answered') {
-      replySection =
-        '<div class="reply-box">' +
-          '<textarea id="txt-' + c.id + '" placeholder="Note (facultatif) : ce que vous avez répondu au visiteur par téléphone/SMS/WhatsApp"></textarea>' +
-          '<div class="actions"><button class="btn-send" id="send-' + c.id + '">Enregistrer et marquer comme traité</button></div>' +
-        '</div>';
-    }
+    var phoneHtml = c.phone ? '<div class="phone">📞 ' + escapeHtml(c.phone) + '</div>' : '';
+
+    var threadHtml = '<div class="thread" id="thread-' + c.id + '">' +
+      messages.map(function(m){
+        var cls = m.from === 'agent' ? 'msg msg-agent' : 'msg msg-visitor';
+        var mTime = m.at ? new Date(m.at).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : '';
+        return '<div class="' + cls + '">' + escapeHtml(m.text) +
+          (mTime ? '<div class="msg-meta">' + (m.from === 'agent' ? 'Vous' : 'Visiteur') + ' · ' + mTime + '</div>' : '') +
+          '</div>';
+      }).join('') +
+    '</div>';
+
+    var replyBox =
+      '<div class="reply-box">' +
+        '<textarea id="txt-' + c.id + '" placeholder="Écrire une réponse (elle apparaît en direct dans le chat du visiteur)"></textarea>' +
+        '<div class="actions">' +
+          '<button class="btn-send" id="send-' + c.id + '">Envoyer au visiteur</button>' +
+          '<button class="btn-mark" id="mark-' + c.id + '">Marquer comme traité</button>' +
+        '</div>' +
+        '<div class="reply-hint">Astuce : vous pouvez aussi répondre directement depuis Telegram avec "Répondre" sur la notification — ça arrive ici aussi.</div>' +
+      '</div>';
 
     return '<div class="card ' + (c.status === 'new' ? 'new' : '') + '">' +
       '<div class="row"><div>' + badgeType + ' ' + badgeStatus + '</div><span class="time">' + time + '</span></div>' +
       '<div class="site">' + escapeHtml(c.site || '') + '</div>' +
-      contentHtml +
-      replySection +
+      phoneHtml +
+      threadHtml +
+      replyBox +
       '</div>';
   }
 
-  function doReply(id){
+  function doReply(id, markOnly){
     var textEl = document.getElementById('txt-' + id);
-    var replyText = textEl ? textEl.value.trim() : '';
+    var replyText = (!markOnly && textEl) ? textEl.value.trim() : '';
     fetch('/.netlify/functions/reply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-admin-password': getPw() },

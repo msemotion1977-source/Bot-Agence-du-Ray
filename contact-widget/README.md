@@ -107,6 +107,7 @@ Dans Netlify : **Site settings → Environment variables**, ajoutez :
 | `TELEGRAM_CHAT_ID` | `123456789` | **Qui reçoit les notifications.** C'est ce que vous changez quand vous voulez notifier quelqu'un d'autre. |
 | `ADMIN_PASSWORD` | *(choisissez un mot de passe solide)* | Protège le tableau de bord |
 | `DASHBOARD_URL` | `https://votre-site.netlify.app/dashboard.html` | Facultatif, pour un lien cliquable dans la notification |
+| `TELEGRAM_WEBHOOK_SECRET` | *(une chaîne aléatoire de votre choix)* | Facultatif mais recommandé, sécurise la fonction "Répondre" (voir étape 4bis) |
 
 Après avoir ajouté ces variables, cliquez sur **Trigger deploy → Deploy site** une fois pour
 qu'elles soient prises en compte.
@@ -115,6 +116,23 @@ qu'elles soient prises en compte.
 `TELEGRAM_CHAT_ID` (avec l'identifiant de la nouvelle personne, récupéré via @userinfobot comme à
 l'étape 2 — elle doit avoir démarré une conversation avec votre bot au préalable), redéployez (un
 clic). Ça prend 30 secondes, aucun code à modifier.
+
+## Étape 4bis — Activer la fonction "Répondre" de Telegram (IMPORTANT, à ne pas sauter)
+
+Sans cette étape, quand l'agent utilise "Répondre" sur une notification Telegram, **rien ne se
+passe** : Telegram ne sait pas encore qu'il doit prévenir votre backend. Il faut le lui dire
+**une seule fois** (et à refaire seulement si vous changez `TELEGRAM_BOT_TOKEN`) :
+
+1. Ouvrez dans votre navigateur :
+   `https://VOTRE-SITE.netlify.app/.netlify/functions/setup-webhook?pw=VOTRE_ADMIN_PASSWORD`
+2. Vous devez voir un message `"✅ Webhook Telegram enregistré..."`.
+3. (Facultatif mais recommandé) Ajoutez une variable d'environnement
+   `TELEGRAM_WEBHOOK_SECRET` (une chaîne aléatoire de votre choix, ex. générée sur
+   [randomkeygen.com](https://randomkeygen.com)) **avant** de faire l'étape 1 ci-dessus, puis
+   redéployez. Ça empêche n'importe qui de faire semblant d'être Telegram et d'injecter de faux
+   messages "agent" dans les conversations.
+4. Pour vérifier à tout moment que le webhook est bien actif, sans rien changer :
+   `https://VOTRE-SITE.netlify.app/.netlify/functions/setup-webhook?pw=VOTRE_ADMIN_PASSWORD&check=1`
 
 ## Étape 5 — Récupérer votre lien widget et votre lien tableau de bord
 

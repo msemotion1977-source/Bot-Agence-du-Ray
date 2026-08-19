@@ -37,14 +37,21 @@ exports.handler = async (event) => {
     return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ error: "Conversation introuvable" }) };
   }
 
-  // NOTE : cette réponse reste interne (note pour l'historique). Comme le système n'utilise
-  // aucun service payant, l'agent recontacte le visiteur elle-même (téléphone/SMS personnel,
-  // ou WhatsApp) en utilisant le numéro affiché. Ce champ sert juste à garder une trace.
-  if (replyText && replyText.trim()) {
-    conversation.reply = replyText.trim().slice(0, 1000);
+  const text = (replyText || "").toString().trim().slice(0, 1000);
+
+  // CORRECTIF : avant, ce texte était juste enregistré comme une "note" interne,
+  // invisible pour le visiteur. Maintenant il est ajouté au VRAI fil de discussion
+  // (exactement comme une réponse Telegram) : le visiteur le voit apparaître dans
+  // sa bulle de chat en direct, car le widget vérifie les nouveaux messages
+  // toutes les 4 secondes.
+  if (text) {
+    conversation.messages = conversation.messages || [];
+    conversation.messages.push({ from: "agent", text, at: new Date().toISOString() });
+    conversation.reply = text;
     conversation.repliedAt = new Date().toISOString();
   }
   conversation.status = "answered";
+  conversation.updatedAt = new Date().toISOString();
   await store.setJSON(id, conversation);
 
   return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true, conversation }) };

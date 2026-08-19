@@ -50,6 +50,7 @@ exports.handler = async (event) => {
     pageUrl,
     type,
     phone: phone || null,
+    question: type === "question" ? question : null,
     status: "new",
     telegramMessageId: null,
     messages: [{ from: "visitor", text: firstMessageText, at: nowIso }]
