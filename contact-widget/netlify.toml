@@ -5,6 +5,9 @@
 [functions]
   node_bundler = "esbuild"
 
+[functions."cleanup"]
+  schedule = "0 3 */2 * *"
+
 [[headers]]
   for = "/widget.js"
   [headers.values]
