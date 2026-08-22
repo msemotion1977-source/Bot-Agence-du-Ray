@@ -5,8 +5,6 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
-// Configuration explicite du stockage : sur certains comptes, Netlify ne configure pas
-// automatiquement l'accès à Blobs comme prévu. On fournit siteID + token en secours.
 function blobsOpts(name) {
   const opts = { name, consistency: "strong" };
   if (process.env.BLOBS_SITE_ID && process.env.BLOBS_TOKEN) {
@@ -79,8 +77,8 @@ exports.handler = async (event) => {
     const dashboardUrl = process.env.DASHBOARD_URL || "";
     const text =
       type === "call"
-        ? `🔔 Nouvelle demande de rappel (${site})\n📞 ${phone}${dashboardUrl ? "\n" + dashboardUrl : ""}\n\nRépondez directement à ce message (fonction "Répondre" de Telegram) pour discuter avec le visiteur.`
-        : `🔔 Nouvelle question (${site})\n💬 "${question.slice(0, 300)}"${phone ? "\n📞 " + phone : "\n(pas de numéro laissé)"}${dashboardUrl ? "\n" + dashboardUrl + "#" + id : ""}\n\nRépondez directement à ce message (fonction "Répondre" de Telegram) pour discuter avec le visiteur.`;
+        ? `🔔 Nouvelle demande de rappel (${site})\nRéf: ${id}\n📞 ${phone}${dashboardUrl ? "\n" + dashboardUrl : ""}\n\nRépondez directement à ce message (fonction "Répondre" de Telegram) pour discuter avec le visiteur.`
+        : `🔔 Nouvelle question (${site})\nRéf: ${id}\n💬 "${question.slice(0, 300)}"${phone ? "\n📞 " + phone : "\n(pas de numéro laissé)"}${dashboardUrl ? "\n" + dashboardUrl + "#" + id : ""}\n\nRépondez directement à ce message (fonction "Répondre" de Telegram) pour discuter avec le visiteur.`;
     const chatId = data.notifyChatId || process.env.TELEGRAM_CHAT_ID;
     const tgResult = await sendTelegramMessage(chatId, text);
     if (tgResult && tgResult.message_id) {
