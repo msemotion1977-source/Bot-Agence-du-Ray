@@ -63,7 +63,7 @@ exports.handler = async (event) => {
     if (token && chatId) {
       const body = {
         chat_id: chatId,
-        text: `💬 ${conversation.site || "Site"} : ${text}`
+        text: `💬 Réf: ${id} (${conversation.site || "Site"})\n${text}`
       };
       if (conversation.telegramMessageId) {
         body.reply_to_message_id = conversation.telegramMessageId;
