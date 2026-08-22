@@ -28,6 +28,40 @@
     s.src = "widget.js";
     s.async = true;
     s.setAttribute("data-site", site);
+    document.body.appendChild(s);
+  })();
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contact</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:transparent; }
+</style>
+</head>
+<body>
+<!--
+  Cette page sert uniquement à être chargée dans une <iframe> sur les plateformes
+  (comme Apimo) qui n'acceptent pas de coller un <script> directement sur le site.
+
+  Dans le back-office du site, utilisez une balise du type :
+  <iframe src="https://chatbotagenceduray.netlify.app/widget-frame.html?site=Nom%20du%20site"
+          style="position:fixed;bottom:20px;right:20px;width:330px;height:480px;
+                 border:none;z-index:999999;background:transparent;"></iframe>
+
+  Le paramètre ?site=... dans l'URL sert à afficher le bon nom dans le tableau de bord.
+-->
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var site = params.get("site") || document.referrer || "site inconnu";
+    var s = document.createElement("script");
+    s.src = "widget.js";
+    s.async = true;
+    s.setAttribute("data-site", site);
     s.setAttribute("data-embed", "iframe");
     document.body.appendChild(s);
   })();
