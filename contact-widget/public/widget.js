@@ -1,6 +1,7 @@
 /*!
  * Widget de contact - bulle flottante + chat en direct
- * Usage : <script src="https://VOTRE-BACKEND.netlify.app/widget.js" data-site="Nom du site" async></script>
+ * Usage normal : <script src="https://VOTRE-BACKEND.netlify.app/widget.js" data-site="Nom du site" async></script>
+ * Usage en iframe : ajoutez data-embed="iframe" (voir widget-frame.html)
  *
  * Attributs optionnels sur la balise <script> :
  *   data-api    -> URL du backend si différente de l'URL du script (rare)
@@ -9,6 +10,7 @@
  *   data-beige  -> couleur secondaire (beige) en hexadécimal
  *   data-avatar -> URL d'une image d'avatar pour la bulle (par défaut : avatar.png sur le backend)
  *   data-notify -> identifiant Telegram à notifier POUR CE SITE précis (remplace celui par défaut)
+ *   data-embed  -> mettre "iframe" pour un affichage encastré, sans bulle flottante, toujours ouvert
  */
 (function () {
   "use strict";
@@ -25,6 +27,7 @@
   var BEIGE = currentScript.getAttribute("data-beige") || "#EFE1CB"; // beige
   var AVATAR_URL = currentScript.getAttribute("data-avatar") || API_BASE + "/avatar.png";
   var SITE_NOTIFY_OVERRIDE = currentScript.getAttribute("data-notify") || "";
+  var EMBED_MODE = currentScript.getAttribute("data-embed") === "iframe";
   var POLL_INTERVAL = 4000;
 
   if (window.__contactWidgetLoaded) return;
@@ -85,9 +88,8 @@
     } catch (e) {}
   }
 
-  // Mémoire "fermé par le visiteur" limitée à l'onglet en cours : évite de rouvrir de force
-  // la bulle à chaque nouvelle page si le visiteur vient de la fermer lui-même.
   function wasDismissedThisSession() {
+    if (EMBED_MODE) return false; // en iframe, toujours ouvert, pas de mémoire de fermeture
     if (!HAS_SESSION) return false;
     return sessionStorage.getItem("__cw_dismissed") === "1";
   }
@@ -108,21 +110,27 @@
   var style = document.createElement("style");
   style.textContent = [
     ":host, *{box-sizing:border-box;}",
-    ".cw-wrap{position:fixed;bottom:20px;right:20px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}",
+    ":host{display:block;" + (EMBED_MODE ? "width:100%;height:100%;" : "") + "}",
+    ".cw-wrap{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}",
+    ".cw-wrap:not(.embed){position:fixed;bottom:20px;right:20px;z-index:2147483000;}",
+    ".cw-wrap.embed{position:static;width:100%;height:100%;}",
     ".cw-bubble{width:60px;height:60px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.25);border:2.5px solid " + ACCENT + ";cursor:pointer;padding:0;overflow:hidden;position:relative;transition:transform .15s ease;}",
     ".cw-bubble:hover{transform:scale(1.06);}",
     ".cw-bubble img{width:100%;height:100%;object-fit:cover;display:block;}",
     ".cw-dot{position:absolute;top:0;right:0;width:15px;height:15px;border-radius:50%;background:#ef4444;border:2px solid #fff;display:none;}",
     ".cw-dot.show{display:block;}",
-    ".cw-panel{position:absolute;bottom:74px;right:0;width:310px;max-width:calc(100vw - 32px);background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden;display:none;flex-direction:column;border:1px solid " + BEIGE + ";}",
+    ".cw-panel{background:#fff;overflow:hidden;display:none;flex-direction:column;}",
+    ".cw-panel:not(.embed){position:absolute;bottom:74px;right:0;width:310px;max-width:calc(100vw - 32px);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.2);border:1px solid " + BEIGE + ";}",
+    ".cw-panel.embed{position:static;width:100%;height:100%;border-radius:0;box-shadow:none;border:none;}",
     ".cw-panel.open{display:flex;}",
-    ".cw-header{background:linear-gradient(135deg, " + ACCENT + ", " + ACCENT + "cc);color:#fff;padding:14px 16px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:10px;justify-content:space-between;}",
+    ".cw-header{background:linear-gradient(135deg, " + ACCENT + ", " + ACCENT + "cc);color:#fff;padding:14px 16px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-shrink:0;}",
     ".cw-header-left{display:flex;align-items:center;gap:10px;}",
     ".cw-header-avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1.5px solid #fff;}",
     ".cw-header-avatar img{width:100%;height:100%;object-fit:cover;display:block;}",
     ".cw-close{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;opacity:.85;padding:2px 4px;}",
     ".cw-close:hover{opacity:1;}",
-    ".cw-body{padding:16px;background:#fff;}",
+    ".cw-close.hidden{display:none;}",
+    ".cw-body{padding:16px;background:#fff;flex:1;display:flex;flex-direction:column;min-height:0;}",
     ".cw-question{font-size:14px;color:#3a3226;margin:0 0 12px;line-height:1.4;}",
     ".cw-choices{display:flex;gap:10px;}",
     ".cw-choice-btn{flex:1;padding:10px 0;border-radius:10px;border:1.5px solid " + ACCENT + ";background:#fff;color:" + ACCENT + ";font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;}",
@@ -139,33 +147,36 @@
     ".cw-back{background:none;border:none;color:#8a7c66;font-size:12.5px;cursor:pointer;margin-bottom:10px;padding:0;}",
     ".cw-small{font-size:11.5px;color:#a89a82;margin-top:4px;}",
     "input.cw-hp{position:absolute;left:-9999px;top:-9999px;}",
-    ".cw-chat{height:260px;overflow-y:auto;padding:4px 2px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;background:#fff;}",
+    ".cw-chat{flex:1;min-height:120px;overflow-y:auto;padding:4px 2px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;background:#fff;}",
+    ".cw-panel:not(.embed) .cw-chat{height:260px;flex:none;}",
     ".cw-msg{max-width:80%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.35;word-wrap:break-word;white-space:pre-wrap;}",
     ".cw-msg-visitor{align-self:flex-end;background:" + ACCENT + ";color:#fff;border-bottom-right-radius:4px;}",
     ".cw-msg-agent{align-self:flex-start;background:" + BEIGE + ";color:#3a3226;border-bottom-left-radius:4px;}",
-    ".cw-chat-input-row{display:flex;gap:8px;align-items:center;}",
+    ".cw-chat-input-row{display:flex;gap:8px;align-items:center;flex-shrink:0;}",
     ".cw-chat-input{flex:1;border:1.5px solid " + BEIGE + ";border-radius:20px;padding:9px 14px;font-size:13.5px;font-family:inherit;outline:none;color:#2c2418;background:#fffdf9;}",
     ".cw-chat-input:focus{border-color:" + ACCENT + ";}",
     ".cw-chat-send{width:36px;height:36px;border-radius:50%;border:none;background:" + ACCENT + ";color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}",
     ".cw-chat-send:hover{filter:brightness(1.06);}",
-    ".cw-restart{display:block;text-align:center;font-size:11px;color:#b3a68f;margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;width:100%;}"
+    ".cw-restart{display:block;text-align:center;font-size:11px;color:#b3a68f;margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;width:100%;flex-shrink:0;}"
   ].join("\n");
   root.appendChild(style);
 
   var wrap = document.createElement("div");
-  wrap.className = "cw-wrap";
+  wrap.className = "cw-wrap" + (EMBED_MODE ? " embed" : "");
   wrap.innerHTML =
-    '<button class="cw-bubble" type="button" aria-label="Nous contacter">' +
-      '<img src="' + AVATAR_URL + '" alt="" />' +
-      '<span class="cw-dot" id="cw-dot"></span>' +
-    "</button>" +
-    '<div class="cw-panel">' +
+    (EMBED_MODE
+      ? ""
+      : '<button class="cw-bubble" type="button" aria-label="Nous contacter">' +
+          '<img src="' + AVATAR_URL + '" alt="" />' +
+          '<span class="cw-dot" id="cw-dot"></span>' +
+        "</button>") +
+    '<div class="cw-panel' + (EMBED_MODE ? " embed" : "") + '">' +
       '<div class="cw-header">' +
         '<div class="cw-header-left">' +
           '<span class="cw-header-avatar"><img src="' + AVATAR_URL + '" alt="" /></span>' +
           "<span>Une question ?</span>" +
         "</div>" +
-        '<button class="cw-close" type="button" aria-label="Fermer">&#10005;</button>' +
+        '<button class="cw-close' + (EMBED_MODE ? " hidden" : "") + '" type="button" aria-label="Fermer">&#10005;</button>' +
       "</div>" +
       '<div class="cw-body" id="cw-body"></div>' +
     "</div>";
@@ -179,7 +190,7 @@
 
   function openPanel() {
     panel.classList.add("open");
-    dot.classList.remove("show");
+    if (dot) dot.classList.remove("show");
     var saved = getSavedConversation();
     if (saved && saved.id) {
       loadConversationAndRenderChat(saved.id);
@@ -188,18 +199,21 @@
     }
   }
   function closePanel() {
+    if (EMBED_MODE) return; // pas de fermeture en mode iframe
     panel.classList.remove("open");
     markDismissed();
   }
 
-  bubble.addEventListener("click", function () {
-    if (panel.classList.contains("open")) {
-      closePanel();
-    } else {
-      openPanel();
-    }
-  });
-  closeBtn.addEventListener("click", closePanel);
+  if (bubble) {
+    bubble.addEventListener("click", function () {
+      if (panel.classList.contains("open")) {
+        closePanel();
+      } else {
+        openPanel();
+      }
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener("click", closePanel);
 
   // ---------- Étape 1 : Oui / Non ----------
 
@@ -408,7 +422,7 @@
           if (data.messages && data.messages.length !== lastMessageCount) {
             var isPanelOpen = panel.classList.contains("open");
             renderMessages(data.messages);
-            if (!isPanelOpen) dot.classList.add("show");
+            if (!isPanelOpen && dot) dot.classList.add("show");
           }
         })
         .catch(function () {});
@@ -421,14 +435,13 @@
     }
   }
 
-  // ---------- Ouverture automatique à l'arrivée sur le site ----------
-  // (sauf si le visiteur a déjà fermé la bulle lui-même durant cette visite)
+  // ---------- Ouverture automatique ----------
+  // En mode iframe : toujours ouvert, pas de bulle à afficher.
+  // En mode normal : ouvert à l'arrivée, sauf si le visiteur l'a fermé durant cette visite.
 
-  if (!wasDismissedThisSession()) {
+  if (EMBED_MODE || !wasDismissedThisSession()) {
     openPanel();
   } else {
-    // Bulle fermée par le visiteur, mais on continue de surveiller en arrière-plan
-    // une conversation existante pour afficher le petit point rouge si l'agent répond.
     var savedOnLoad = getSavedConversation();
     if (savedOnLoad && savedOnLoad.id) {
       startPolling(savedOnLoad.id);
